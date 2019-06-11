@@ -20,13 +20,14 @@ namespace sjtu {
         typedef size_t position;
         struct fileName{
             char *name;
-            fileName(){ name = new char[1]; }
+            fileName(){ name = new char[2]; }
             ~fileName(){if(name) delete []name;}
             void getname(int i) {
                 name[0] = static_cast<char>(i);
+                name[1] = '\0';
             }
             void getname(char *n){
-                name = n;
+                for(int i = 0;i < strlen(n); ++i) name[i] = n[i];
             }
         };
         struct Treenode{
@@ -63,19 +64,19 @@ namespace sjtu {
         fileName na, filenamefrom;
         position tmpdatapo;
         position tmpnodepo;
-        int ustobename = 0;
+        int ustobename = 2;
         position from_tmp = 0;
         class const_iterator;
         class iterator;
         void fileOpen(){
             hf = 1;
             if(fileisOpen == 0){
-                file = fopen("2.txt","rb+");
+                file = fopen(na.name,"rb+");
                 if(file == NULL){
                     hf = 0;
-                    file = fopen("2.txt", "w");
+                    file = fopen(na.name, "w");
                     fclose(file);
-                    file = fopen("2.txt", "rb+");
+                    file = fopen(na.name, "rb+");
                }
                 else fileread(&bas, 0, sizeof(Bas), 1);
                 fileisOpen = 1;
@@ -189,6 +190,7 @@ namespace sjtu {
             fileClose();
             // Todo Destructor
         }
+
         // Insert: Insert certain Key-Value into the database
         // Return a pair, the first of the pair is the iterator point to the new
         // element, the second of the pair is Success if it is successfully inserted
@@ -208,9 +210,7 @@ namespace sjtu {
                 else return finddatanode(key, child[i - 1]);
             }
         }
-        pair<iterator, OperationResult> insert(const Key& key, const Value& value) {
 
-        }
         // Erase: Erase the Key-Value
         // Return Success if it is successfully erased
         // Return Fail if the key doesn't exist in the database
@@ -256,7 +256,7 @@ namespace sjtu {
                 filewrite(&rightnode, rightnode.me, sizeof(datanode), 1);
             }
 
-            filewrite(&data, data.me, 1, sizeof(datanode));
+            filewrite(&data, data.me, sizeof(datanode), 1);
             filewrite(&newdata, newnode.me, sizeof(datanode), 1);
             filewrite(&bas, 0, sizeof(Bas), 1);
 
@@ -353,8 +353,8 @@ namespace sjtu {
             data.current_size++;
             bas.Treesize++;
 
-            filewrite(&bas, 0, 1, sizeof(Bas));
-            if(data.current_size <= L) filewrite(&data, data.me, 1, sizeof(datanode));
+            filewrite(&bas, 0, sizeof(Bas), 1);
+            if(data.current_size <= L) filewrite(&data, data.me, sizeof(datanode), 1);
             else split_datanode(data, key);
             return pair <iterator, OperationResult> (res, Success);
         }
@@ -362,21 +362,21 @@ namespace sjtu {
             position dataset = finddatanode(key, bas.root);
             datanode data;
             if(bas.Treesize == 0 || dataset == 0) {
-                fileread(&data, bas.head, 1, sizeof(datanode));
+                fileread(&data, bas.head, sizeof(datanode), 1);
                 pair <iterator, OperationResult> res = insert_datanode(data, key, value);
                 if(res.second == Fail) return ret;
                 position parposi = datanode.parent;
                 Treenode node;
                 while(parposi != 0) {
-                    fileread(&node, parposi, 1, sizeof(Treenode));
+                    fileread(&node, parposi, sizeof(Treenode), 1);
                     node.keylist[0] = key;
-                    filewrite(&node, parposi, 1, sizeof(Treenode));
+                    filewrite(&node, parposi, sizeof(Treenode), 1);
                     parposi = node.parent;
                 }
 
             }
             else {
-                fileread(&data, dataset, 1, sizeof(datanode));
+                fileread(&data, dataset, sizeof(datanode), 1);
             pair <iterator, OperationResult> res = insert_datanode(datanode, key, value);
             }
             return res;
