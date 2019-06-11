@@ -157,7 +157,7 @@ namespace sjtu {
             /*na.getname(ustobename);*/
             file = NULL;
             fileOpen();
-            /*Treenode Root;
+            Treenode Root;
             datanode Head;
             bas.tail = bas.end = sizeof(Bas) + sizeof(Treenode) + sizeof(datanode);
             bas.head = sizeof(Bas) + sizeof(Treenode);
@@ -171,7 +171,7 @@ namespace sjtu {
             filewrite(&bas, bas.me, sizeof(Bas), 1);
             filewrite(&Root, Root.me, sizeof(Treenode), 1);
             filewrite(&Head, Head.me, sizeof(datanode), 1);
-            // Todo Default*/
+            // Todo Default
         }
         BTree(const BTree& other) {
             fileName.setname(ustobename);
