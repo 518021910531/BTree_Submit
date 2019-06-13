@@ -1,7 +1,14 @@
+//
+// Created by 17961 on 2019/6/10.
+//
+
+#ifndef BTREE_HPP
+#define BTREE_HPP
+
 #include "utility.hpp"
 #include <functional>
 #include <cstddef>
-#include "exception.hpp"
+
 #include <map>
 #include <fstream>
 #include <cstdio>
@@ -483,3 +490,5 @@ namespace sjtu {
 
 	};
 } // namespace sjtu
+
+#endif //CLION_WORK_BTREE_HPP
