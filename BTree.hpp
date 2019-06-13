@@ -1,461 +1,490 @@
-//
-// Created by 17961 on 2019/6/10.
-//
+//   518021910882
+//   杜劲达
 
-#ifndef CLION_WORK_BTREE_HPP
-#define CLION_WORK_BTREE_HPP
+
+//   B+树优越性：由于中间节点比叶子结点信息量少，B+树高度较小，每次查询修改IO次数少，但需要到叶子结点，因此随机查询性能稳定，较快
+//               由于叶子结点之间有链接关联，范围查询与遍历性能优越
 
 #include "utility.hpp"
 #include <functional>
 #include <cstddef>
+#include "exception.hpp"
 #include <map>
+#include <fstream>
+#include <cstdio>
+#include <cstring>
 using namespace std;
-const int size_M = 500;
-const int size_L = 200;
 namespace sjtu {
-    template <class Key, class Value, class Compare = std::less<Key> >
-    class BTree {
-    public:
-        typedef pair<const Key, Value> value_type;
-        typedef size_t position;
-        struct fileName{
-            char *name;
-            fileName(){ name = new char[2]; }
-            ~fileName(){if(name) delete []name;}
-            void getname(int i) {
-                name[0] = static_cast<char>(i);
-                name[1] = '\0';
-            }
-            void getname(char *n){
-                for(int i = 0;i < strlen(n); ++i) name[i] = n[i];
-            }
-        };
-        struct Treenode{
-            position me, parent;
-            position child[size_M + 1];
-            Key keylist[size_M + 1];
-            int current_size;
-            bool rank;
-            Treenode(){
-                me = parent = current_size = 0;
-                rank = 0;
-            }
-        };
-        struct datanode{
-            position me, parent;
-            position left, right;
-            int current_size;
-            value_type datalist[size_L + 1];
-            datanode(){
-                me = parent = 0;
-                left = right = 0;
-            }
-        };
-        struct Bas{
-            position me, root, head, end, tail;
-            int Treesize;
-            Bas(){
-                root = head = end = tail = Treesize = 0;
-            }
-        };
-        FILE *file, *filefrom;
-        Bas bas;
-        bool fileisOpen = 0, hf;
-        fileName na, filenamefrom;
-        position tmpdatapo;
-        position tmpnodepo;
-        int ustobename = 2;
-        position from_tmp = 0;
-        class const_iterator;
-        class iterator;
-        void fileOpen(){
-            hf = 1;
-            if(fileisOpen == 0){
-                file = fopen(na.name,"rb+");
-                if(file == NULL){
-                    hf = 0;
-                    file = fopen(na.name, "w");
-                    fclose(file);
-                    file = fopen(na.name, "rb+");
-               }
-                else fileread(&bas, 0, sizeof(Bas), 1);
-                fileisOpen = 1;
-            }
-        }
-        void fileClose(){
-            if(fileisOpen){
-                fclose(file);
-                fileisOpen = 0;
-            }
-        }
-        void fileread(void *thing, position posi, int size, int num){
-            if(fseek(file, posi, 0)) throw"打开失败79";
-            fread(thing, size, num, file);
-        }
-        void filewrite(void *thing, position posi, int size, int num){
-            if(fseek(file, posi, 0)) throw "打开失败83";
-            fwrite(thing, size, num, file);
-        }
-        void copyFile(char *to, char *from){
-            filenamefrom.getname(from);
-            filefrom = fopen(filenamefrom.name, "rb+");
-            if(filefrom == NULL) throw "98";
-            Bas tmpbas;
-            if(fseek(filefrom, 0, 0)) throw"100";
-            fread(&tmpbas, sizeof(Bas), 1, filefrom);
-            bas.Treesize = tmpbas.Treesize;
-            bas.root = bas.end = sizeof(Bas);
-            filewrite(&bas, 0, sizeof(Bas), 1);
-            copynode(bas.root, tmpbas.root, 0);
-            filewrite(&bas, 0, sizeof(Bas), 1);
-            fclose(filefrom);
-        }
-        void copynode(position meposi, position fromposi, position parposi){
-            Treenode node, fromnode;
-            if(fseek(filefrom, fromposi, 0)) throw"111";
-            fread(&fromnode, sizeof(Treenode), 1, filefrom);
-            filewrite(&node, meposi, sizeof(Treenode), 1);
-            node.parent = parposi;
-            node.current_size = fromnode.current_size;
-            node.me = meposi;
-            node.rank = fromnode.rank;
-            for(int i = 0; i < node.current_size; ++i){
-                node.keylist[i] = fromnode.keylist[i];
-                node.child[i] = fromnode.child[i];
-                if(node.rank == 0) copydata(node.child[i], fromnode.child[i], node.me);
-                else copynode(node.child[i], fromnode.child[i], node.me);
-            }
-            filewrite(&node, node.me, sizeof(Treenode), 1);
-        }
-        void copydata(position meposi, position fromposi, position parposi){
-            datanode node, fromnode, leftnode;
-            if(fseek(filefrom, fromposi, 0)) throw"130";
-            fread(&fromnode, sizeof(datanode), 1, filefrom);
-            filewrite(&node, meposi, sizeof(datanode), 1);
-            node.me = meposi;
-            node.current_size = fromnode.current_size;
-            node.parent = fromnode.parent;
-            node.left = from_tmp;
-            node.right = 0;
-            if(from_tmp != 0){
-                fileread(&leftnode, from_tmp, 1, sizeof(datanode));
-                leftnode.right = meposi;
-                filewrite(&leftnode, from_tmp, 1, sizeof(datanode));
-                bas.tail = posi;
-            }
-            else bas.head = posi;
-            for(int i = 0;i < node.current_size; ++i) {
-                node.datalist[i].first = fromnode.datalist[i].first;
-                node.datalist[i].second = fromnode.datalist[i].second;
-            }
-            filewrite(&node, node.me, sizeof(datanode), 1);
-            bas.end += sizeof(datanode);
-            from_tmp = posi;
-        };
-        // Default Constructor and Copy Constructor
+	template<class Key, class Value, class Compare = std::less<Key> >
+	class BTree {
+		static const int M = 228;
+		static const int L = 32;
 
-        BTree() {
-            /*na.getname(ustobename);*/
-            file = NULL;
-            fileOpen();
-            Treenode Root;
-            datanode Head;
-            bas.tail = bas.end = sizeof(Bas) + sizeof(Treenode) + sizeof(datanode);
-            bas.head = sizeof(Bas) + sizeof(Treenode);
-            bas.Treesize = bas.me = 0;
-            Root.parent = 0;
-            Root.me = sizeof(Bas);
-            Root.rank = 0;
-            Head.parent = Root.me;
-            Head.parent = sizeof(Treenode) + sizeof(Bas);
-            Head.me = sizeof(Bas) + sizeof(Treenode);
-            filewrite(&bas, bas.me, sizeof(Bas), 1);
-            filewrite(&Root, Root.me, sizeof(Treenode), 1);
-            filewrite(&Head, Head.me, sizeof(datanode), 1);
-            // Todo Default
-        }
-        BTree(const BTree& other) {
-            fileName.setname(ustobename);
-            fielOpen();
-            copyFile(na.name, other.na.name);
-            // Todo Copy
-        }
-        BTree& operator=(const BTree& other) {
-            fileName.setname(ustobename);
-            fielOpen();
-            copyFile(na.name, other.na.name);
-            // Todo Assignment
-        }
-        ~BTree() {
-            fileClose();
-            // Todo Destructor
-        }
+		void fileread(void *place, int offset, int num, int size) {
+			fseek(file, offset, 0);
+			fread(place, num, size, file);
+			fflush(file);
+		}
 
-        // Insert: Insert certain Key-Value into the database
-        // Return a pair, the first of the pair is the iterator point to the new
-        // element, the second of the pair is Success if it is successfully inserted
-        position finddatanode(Key &key, position posi){
-            Treenode tmp;
-            fileread(&tmp, posi, sizeof(Treenode), 1);
-            if(!tmp.rank) {
-                int i;
-                for(i = 0; i < tmp.current_size; ++i) if(key < tmp.keylist[i]) break;
-                if(i == 0) return 0;
-                else return tmp.child[i - 1];
-            }
-            else {
-                int i;
-                for(i = 0; i < tmp.current_size; ++i) if(key < tmp.keylist[i]) break;
-                if(i == 0) return 0;
-                else return finddatanode(key, child[i - 1]);
-            }
-        }
+		void filewrite(void *place, int offset, int num, int size) {
+			fseek(file, offset, 0);
+			fwrite(place, num, size, file);
+			fflush(file);
+		}
 
-        // Erase: Erase the Key-Value
-        // Return Success if it is successfully erased
-        // Return Fail if the key doesn't exist in the database
-        OperationResult erase(const Key& key) {
-            // TODO erase function
-            return Fail;  // If you can't finish erase part, just remaining here.
-        }
-        // Return a iterator to the beginning
-        iterator begin() {}
-        const_iterator cbegin() const {}
-        // Return a iterator to the end(the next element after the last)
-        iterator end() {}
-        const_iterator cend() const {}
-        // Check whether this BTree is empty
-        bool empty() const {}
-        // Return the number of <K,V> pairs
-        size_t size() const {}
-        // Clear the BTree
-        void clear() {}
-        // Return the value refer to the Key(key)
-        Value at(const Key& key){
-        }
-        void split_datanode(datanode &data, const Key &key){
-            datanode newdata;
-            newdata.current_size = data.current_size - (data.current_size >> 1);
-            data.current_size = data.current_size >> 1;
-            newdata.me = bas.end;
-            bas.end += sizeof(datanode);
-            newdata.parent = data.parent;
-            for (int i=0; i<newdata.currnet_size; ++i) {
-                newdata.datalist[i].first = data.datalist[i + leaf.cnt].first;
-                newdata.datalist[i].second = data.datalist[i + leaf.cnt].second;
-
-            }
-            newdata.right = data.right;
-            newdata.left = data.me;
-            data.right = newdata.me;
-            datanode rightnode;
-            if(newdata.right == 0) info.tail = newdata.me;
-            else {
-                fileread(&rightnode, newdata.right, sizeof(datanode), 1);
-                rightnode.left = newdata.me;
-                filewrite(&rightnode, rightnode.me, sizeof(datanode), 1);
-            }
-
-            filewrite(&data, data.me, sizeof(datanode), 1);
-            filewrite(&newdata, newnode.me, sizeof(datanode), 1);
-            filewrite(&bas, 0, sizeof(Bas), 1);
-
-            Treenode par;
-            fileread(&par, data.parent, sizeof(Treenode), 1);
-            insert_Treenode(par, newdata.datalist[0].first, newdata.me);
-        }
-        void insert_Treenode(Treenode &node, Key key, position newchild){
-            int pos = 0;
-            for (; pos < node.cnt; ++pos)
-                if (key < node.keylist[pos]) break;
-            for (int i = node.cnt - 1; i >= pos; --i)
-                node.keylist[i+1] = node.keylist[i];
-            for (int i = node.cnt - 1; i >= pos; --i)
-                node.ch[i+1] = node.ch[i];
-            node.keylist[pos] = key;
-            node.child[pos] = newchild;
-            ++node.current_size;
-            if(node.current_size <= M) filewrite(&node, node.offset, sizeof(internalNode), 1);
-            else split_Treenode(node);
-        }
-        void split_Treenode(Treenode &node){
-            Treenode newnode;
-            newnode.current_size = node.current_size - (node.current_size >> 1);
-            node.current_size = node.current_size >> 1;
-            newnode.parent = node.parent;
-            newnode.rank = node.rank;
-            newnode.me = bas.end;
-            bas.end += sizeof(Treenode);
-            for (int i = 0; i < newnode.current_size; ++i)
-                newnode.keylist[i] = node.key[i + node.current_size];
-            for (int i = 0; i < newnode.cnt; ++i)
-                newnode.child[i] = node.child[i + node.current_size];
+	private:
+		// Your private members go here
+		FILE *file;
+		char name[50];
 
 
-            datanode data;
-            Treenode treenode;
-            for (int i = 0; i < newnode.current_size; ++i) {
-                if(newnode.rank == 0) {
-                    fileread(&data, newnode.ch[i], sizeof(leafNode), 1);
-                    data.parent = newnode.me;
-                    filewrite(&data, data.me, sizeof(leafNode), 1);
-                } else {
-                    fileread(&treenode, newnode.ch[i], sizeof(internalNode), 1);
-                    treenode.parent = newnode.me;
-                    filewrite(&treenode, treenode.me, sizeof(internalNode), 1);
-                }
-            }
 
-            if(node.me == bas.root) {			//分裂根节点
-
-                Treenode newroot;
-                newroot.parent = 0;
-                newroot.rank = 1;
-                newroot.me = info.end;
-                bas.end += sizeof(Treenode);
-                newroot.current_size = 2;
-                newroot.keylist[0] = node.keylist[0];
-                newroot.child[0] = node.me;
-                newroot.keylist[1] = newnode.keylist[0];
-                newroot.child[1] = newnode.me;
-                node.parent = newroot.me;
-                newnode.parent = newroot.me;
-                bas.root = newroot.me;
-
-                filewrite(&bas, 0, sizeof(Bas), 1);
-                filewrite(&node, node.me, sizeof(internalNode), 1);
-                filewrite(&newnode, newnode.me, sizeof(internalNode), 1);
-                filewrite(&newroot, newroot.me, sizeof(internalNode), 1);
-            } else {															// not root
-                filewrite(&bas, 0, sizeof(Bas), 1);
-                filewrite(&node, node.me, sizeof(Treenode), 1);
-                filewrite(&newnode, newnode.me, sizeof(Treenode), 1);
-
-                Treenode par;
-                readFile(&par, node.parent, sizeof(Treenode), 1);
-                insert_node(par, newnode.keylist[0], newnode.me);
-            }
-        }
-        pair <iterator, OperationResult> insert_datanode(datanode data, const Key key, const Value value){
-            iterator res;
-
-            int pos;
-            for (pos = 0; pos < data.current_size; ++pos) {
-                if (key == data.datalist[pos].first) return pair <iterator, OperationResult> (res, Fail);
-                if (key < data.datalist[pos].first) break;
-            }
-            for (int i = data.curretn_size - 1; i >= pos; --i) {
-                data.datalist[i+1].first = data.datalist[i].first;
-                data.datalist[i+1].second = data.datalist[i].second;
-            }
-            data.datalist[pos].first = key;
-            data.datalist[pos].second = value;
-            data.current_size++;
-            bas.Treesize++;
-
-            filewrite(&bas, 0, sizeof(Bas), 1);
-            if(data.current_size <= L) filewrite(&data, data.me, sizeof(datanode), 1);
-            else split_datanode(data, key);
-            return pair <iterator, OperationResult> (res, Success);
-        }
-        pair <iterator, OperationResult>  insert(Key &key, Value &value){
-            position dataset = finddatanode(key, bas.root);
-            datanode data;
-            if(bas.Treesize == 0 || dataset == 0) {
-                fileread(&data, bas.head, sizeof(datanode), 1);
-                pair <iterator, OperationResult> res = insert_datanode(data, key, value);
-                if(res.second == Fail) return ret;
-                position parposi = datanode.parent;
-                Treenode node;
-                while(parposi != 0) {
-                    fileread(&node, parposi, sizeof(Treenode), 1);
-                    node.keylist[0] = key;
-                    filewrite(&node, parposi, sizeof(Treenode), 1);
-                    parposi = node.parent;
-                }
-
-            }
-            else {
-                fileread(&data, dataset, sizeof(datanode), 1);
-            pair <iterator, OperationResult> res = insert_datanode(datanode, key, value);
-            }
-            return res;
-        }
-        /**
-         * Returns the number of elements with key
-         *   that compares equivalent to the specified argument,
-         * The default method of check the equivalence is !(a < b || b > a)
-         */
-        size_t count(const Key& key) const {}
-        /**
-         * Finds an element with key equivalent to key.
-         * key value of the element to search for.
-         * Iterator to an element with key equivalent to key.
-         *   If no such element is found, past-the-end (see end()) iterator is
-         * returned.
-         */
-        iterator find(const Key& key) {}
-        const_iterator find(const Key& key) const {}
-        class iterator {
-        private:
-            // Your private members go here
-        public:
-            bool modify(const Value& value){
-
-            }
-            iterator() {
-                // TODO Default Constructor
-            }
-            iterator(const iterator& other) {
-                // TODO Copy Constructor
-            }
-            // Return a new iterator which points to the n-next elements
-            iterator operator++(int) {
-                // Todo iterator++
-            }
-            iterator& operator++() {
-                // Todo ++iterator
-            }
-            iterator operator--(int) {
-                // Todo iterator--
-            }
-            iterator& operator--() {
-                // Todo --iterator
-            }
-            // Overloaded of operator '==' and '!='
-            // Check whether the iterators are same
-            bool operator==(const iterator& rhs) const {
-                // Todo operator ==
-            }
-            bool operator==(const const_iterator& rhs) const {
-                // Todo operator ==
-            }
-            bool operator!=(const iterator& rhs) const {
-                // Todo operator !=
-            }
-            bool operator!=(const const_iterator& rhs) const {
-                // Todo operator !=
-            }
-        };
-        class const_iterator {
-            // it should has similar member method as iterator.
-            //  and it should be able to construct from an iterator.
-        private:
-            // Your private members go here
-        public:
-            const_iterator() {
-                // TODO
-            }
-            const_iterator(const const_iterator& other) {
-                // TODO
-            }
-            const_iterator(const iterator& other) {
-                // TODO
-            }
-            // And other methods in iterator, please fill by yourself.
-        };
-    };
-}  // namespace sjtu
+	public:
 
 
-#endif //CLION_WORK_BTREE_HPP
+		struct basic_information {
+			int head;
+			int tail;
+			size_t tree_size;
+			int root;
+			int end;
+
+			basic_information() {
+				head = tail = tree_size = root = end = 0;
+			}
+		};
+
+		basic_information basic_info;
+
+		struct leaf_node {
+			int parent;
+			int prev;
+			int next;
+			int num;
+			int offset;
+
+			pair<Key, Value> data[L + 1];                    
+
+			leaf_node(int t = 0) {
+				parent = prev = next = num = 0;
+				offset = t;
+				memset(data, 0, L + 1);
+			}
+		};
+
+		struct inter_node {
+			int parent;
+			int num;
+			int offset;
+			bool son_type;     
+			int son[M + 1];
+			Key data[M + 1];
+
+			inter_node(int t = 0) {
+				parent = num = son_type = 0;
+				offset = t;
+				memset(son, 0, M + 1);
+				memset(data, 0, M + 1);
+			}
+		};
+
+		
+
+		
+		BTree() {
+			strcpy(name, "123.txt");
+			file = fopen(name, "rb+");
+
+			if (file == nullptr) {
+				file = fopen(name, "wb+");
+				basic_info.tree_size = 0;
+				basic_info.end = sizeof(basic_information);   
+
+				inter_node root(basic_info.end);
+				root.son_type = 1;
+				root.num = 1;
+				basic_info.root = root.offset;
+				basic_info.end += sizeof(inter_node);     
+
+				leaf_node leaf(basic_info.end);
+				basic_info.head = basic_info.tail = leaf.offset;
+				basic_info.end += sizeof(leaf_node);       
+
+				root.son[0] = leaf.offset;
+				leaf.parent = root.offset;
+
+				filewrite(&basic_info, 0, 1, sizeof(basic_information));
+				filewrite(&root, root.offset, 1, sizeof(inter_node));
+				filewrite(&leaf, leaf.offset, 1, sizeof(leaf_node));
+			}
+			else {
+				fileread(&basic_info, 0, 1, sizeof(basic_information));
+			}
+			fflush(file);
+		}
+
+		BTree(const BTree &other) {}
+
+		BTree &operator=(const BTree &other) {}
+
+		~BTree() {
+			// Todo Destructor
+			fclose(file);
+		}
+
+		void clear() {
+			basic_info.tree_size = 0;
+			basic_info.end = sizeof(basic_information);    
+
+			inter_node root(basic_info.end);
+			root.son_type = 1;
+			root.num = 1;
+			basic_info.root = root.offset;
+			basic_info.end += sizeof(inter_node);     
+
+			leaf_node leaf(basic_info.end);
+			basic_info.head = basic_info.tail = leaf.offset;
+			basic_info.end += sizeof(leaf_node);       
+
+			root.son[0] = leaf.offset;
+			leaf.parent = root.offset;
+
+			filewrite(&basic_info, 0, 1, sizeof(basic_information));
+			filewrite(&root, root.offset, 1, sizeof(inter_node));
+			filewrite(&leaf, leaf.offset, 1, sizeof(leaf_node));
+		}
+
+		pair<iterator, OperationResult> insert(const Key &key, const Value &value) {
+			int leafOffset = find_pos(key, basic_info.root);
+			leaf_node leaf;
+
+			if (basic_info.tree_size == 0 || leafOffset == 0) {     
+				OperationResult t = min_insert(leaf, leafOffset, key, value);
+				return pair<iterator, OperationResult>(iterator(), t);
+			}
+			
+			fileread(&leaf, leafOffset, 1, sizeof(leaf_node));
+			OperationResult t = leaf_insert(leaf, key, value);    
+			fflush(file);
+			return pair<iterator, OperationResult>(iterator(), t);
+		}
+
+
+		OperationResult leaf_insert(leaf_node &leaf, const Key &key, const Value &value) {     
+			int pos = 0;
+
+			for (; pos < leaf.num; pos++) {    
+				if (key == leaf.data[pos].first)
+					return Fail;
+				if (key < leaf.data[pos].first)
+					break;
+			}
+
+			for (int i = leaf.num - 1; i >= pos; --i) {
+				leaf.data[i + 1].first = leaf.data[i].first;
+				leaf.data[i + 1].second = leaf.data[i].second;
+			}
+
+			leaf.num++;
+			basic_info.tree_size++;
+
+
+			leaf.data[pos].first = key;
+			leaf.data[pos].second = value;
+
+			filewrite(&basic_info, 0, 1, sizeof(basic_information));
+
+			if (leaf.num <= L)
+				filewrite(&leaf, leaf.offset, 1, sizeof(leaf_node));
+			else
+				leaf_split(leaf, key);
+
+			fflush(file);
+
+			return Success;
+		}
+
+		void internode_insert(inter_node &node, const Key &key, int newSon) {    
+			int pos = 0;
+			for (; pos < node.num; pos++)
+				if (key < node.data[pos]) break;
+			for (int i = node.num - 1; i >= pos; i--)
+				node.data[i + 1] = node.data[i];
+			for (int i = node.num - 1; i >= pos; i--)
+				node.son[i + 1] = node.son[i];
+			node.data[pos] = key;
+			node.son[pos] = newSon;
+			node.num++;
+			if (node.num <= M) filewrite(&node, node.offset, 1, sizeof(inter_node));
+			else internode_split(node);
+			fflush(file);
+		}
+
+		void leaf_split(leaf_node &leaf, const Key &key) {
+
+			leaf_node newLeaf;
+			leaf_node nextLeaf;
+
+			newLeaf.num = leaf.num / 2;
+			leaf.num -= newLeaf.num;
+
+			newLeaf.offset = basic_info.end;
+			basic_info.end += sizeof(leaf_node);
+			newLeaf.parent = leaf.parent;
+
+			for (int i = 0; i < newLeaf.num; i++) {
+				newLeaf.data[i].first = leaf.data[i + leaf.num].first;
+				newLeaf.data[i].second = leaf.data[i + leaf.num].second;
+			}
+
+			newLeaf.next = leaf.next;
+			newLeaf.prev = leaf.offset;
+			leaf.next = newLeaf.offset;
+
+			if (newLeaf.next != 0) {      /
+				fileread(&nextLeaf, newLeaf.next, 1, sizeof(leaf_node));
+				nextLeaf.prev = newLeaf.offset;
+				filewrite(&nextLeaf, nextLeaf.offset, 1, sizeof(leaf_node));
+			}                                 
+
+			if (basic_info.tail == leaf.offset)
+				basic_info.tail = newLeaf.offset; 
+
+			filewrite(&leaf, leaf.offset, 1, sizeof(leaf_node));
+			filewrite(&newLeaf, newLeaf.offset, 1, sizeof(leaf_node));
+			filewrite(&basic_info, 0, 1, sizeof(basic_information));
+
+			inter_node parent;
+			fileread(&parent, leaf.parent, 1, sizeof(inter_node));
+
+			internode_insert(parent, newLeaf.data[0].first, newLeaf.offset);   
+
+			fflush(file);
+		}
+
+
+
+		void internode_split(inter_node &node) {
+
+			inter_node newNode;
+			newNode.num = node.num / 2;
+			node.num -= newNode.num;
+			newNode.parent = node.parent;
+			newNode.son_type = node.son_type;
+			newNode.offset = basic_info.end;
+			basic_info.end += sizeof(inter_node);
+
+			for (int i = 0; i < newNode.num; ++i) {
+				newNode.son[i] = node.son[node.num + i];
+				newNode.data[i] = node.data[node.num + i];
+			}
+
+			leaf_node leaf;
+			inter_node tmp;
+			for (int j = 0; j < newNode.num; ++j) {
+				if (newNode.son_type) {              
+					fileread(&leaf, newNode.son[j], 1, sizeof(leaf_node));
+					leaf.parent = newNode.offset;
+					filewrite(&leaf, leaf.offset, 1, sizeof(leaf_node));
+				}
+				else {
+					fileread(&tmp, newNode.son[j], 1, sizeof(inter_node));
+					tmp.parent = newNode.offset;
+					filewrite(&tmp, tmp.offset, 1, sizeof(inter_node));
+				}
+			}
+
+
+
+			if (node.offset == basic_info.root) {        
+				inter_node newRoot;
+				newRoot.parent = newRoot.son_type = 0;
+				newRoot.offset = basic_info.end;
+				basic_info.end += sizeof(inter_node);
+
+				newRoot.num = 2;
+				newRoot.data[0] = node.data[0];
+				newRoot.data[1] = newNode.data[0];
+
+				newRoot.son[0] = node.offset;
+				newRoot.son[1] = newNode.offset;
+
+				basic_info.root = node.parent = newNode.parent = newRoot.offset;
+
+				filewrite(&node, node.offset, 1, sizeof(inter_node));
+				filewrite(&newNode, newNode.offset, 1, sizeof(inter_node));
+				filewrite(&newRoot, newRoot.offset, 1, sizeof(inter_node));
+				filewrite(&basic_info, 0, 1, sizeof(basic_information));
+			}
+			else {
+				inter_node parent;
+
+				filewrite(&basic_info, 0, 1, sizeof(basic_information));
+				filewrite(&node, node.offset, 1, sizeof(inter_node));
+				filewrite(&newNode, newNode.offset, 1, sizeof(inter_node));
+
+				fileread(&parent, node.parent, 1, sizeof(inter_node));
+
+				internode_insert(parent, newNode.data[0], newNode.offset);    
+			}
+			fflush(file);
+		}
+
+		OperationResult min_insert(leaf_node &leaf, int leafOffset, const Key &key, const Value &value) {
+			fileread(&leaf, basic_info.head, 1, sizeof(leaf_node));
+			OperationResult t = leaf_insert(leaf, key, value);
+
+			if (t == Fail) return t;
+
+			int offset = leaf.parent;
+			inter_node node;
+
+			while (offset != 0) {     
+				fileread(&node, offset, 1, sizeof(inter_node));
+
+				node.data[0] = key;
+
+				filewrite(&node, offset, 1, sizeof(inter_node));
+
+				offset = node.parent;
+			}
+			fflush(file);
+			return t;
+		}
+
+		int find_pos(const Key &key, int offset) {
+			inter_node p;
+			fileread(&p, offset, 1, sizeof(inter_node));
+			if (p.son_type) {
+				int pos = 0;
+				for (; pos < p.num; pos++)
+					if (key < p.data[pos]) break;
+				if (pos == 0) return 0;
+				return p.son[pos - 1];
+			}
+			else {
+				int pos = 0;
+				for (; pos < p.num; pos++)
+					if (key < p.data[pos]) break;   
+				if (pos == 0) return 0;
+				return find_pos(key, p.son[pos - 1]);
+			}
+		}
+
+		Value at(const Key &key) {
+			int leaf_offset = find_pos(key, basic_info.root);
+
+			leaf_node leaf;
+
+			fileread(&leaf, leaf_offset, 1, sizeof(leaf_node));
+			for (int i = 0; i < leaf.num; i++)
+				if (leaf.data[i].first == key)
+					return leaf.data[i].second;
+		}
+
+		// Erase: Erase the Key-Value
+		// Return Success if it is successfully erased
+		// Return Fail if the key doesn't exist in the database
+
+		OperationResult erase(const Key &key) {     //insert写到自闭
+			// TODO erase function
+			return Fail;  // If you can't finish erase part, just remaining here.
+		}
+
+		bool empty() const {
+			return basic_info.tree_size == 0;
+		}
+
+		// Return the number of <K,V> pairs
+		size_t size() const {
+			return basic_info.tree_size;
+		}
+		class const_iterator;
+
+		class iterator {
+			friend class BTree;
+
+		private:
+			// Your private members go here
+			int offset;
+			BTree *currentTree;
+
+		public:
+			bool modify(const Value &value) {
+				return true;
+			}
+
+			iterator() {
+				// TODO Default Constructor
+				currentTree = nullptr;
+				offset = 0;
+			}
+
+			iterator(BTree *b, int p = 0) {
+				currentTree = nullptr;
+				offset = p;
+			}
+
+			iterator(const iterator &other) {
+				// TODO Copy Constructor
+				currentTree = other.currentTree;
+				offset = other.offset;
+			}
+
+			// Return a new iterator which points to the n-next elements
+			iterator operator++(int) {
+				// Todo iterator++
+			}
+
+			iterator &operator++() {
+				// Todo ++iterator
+			}
+
+			iterator operator--(int) {
+				// Todo iterator--
+			}
+
+			iterator &operator--() {
+				// Todo --iterator
+			}
+
+			// Overloaded of operator '==' and '!='
+			// Check whether the iterators are same
+			bool operator==(const iterator &rhs) const {
+				// Todo operator ==
+			}
+
+			bool operator==(const const_iterator &rhs) const {
+				// Todo operator ==
+			}
+
+			bool operator!=(const iterator &rhs) const {
+				// Todo operator !=
+			}
+
+			bool operator!=(const const_iterator &rhs) const {
+				// Todo operator !=
+			}
+		};
+
+		class const_iterator {
+			// it should has similar member method as iterator.
+			//  and it should be able to construct from an iterator.
+		private:
+			// Your private members go here
+		public:
+			const_iterator() {
+				// TODO
+			}
+
+			const_iterator(const const_iterator &other) {
+				// TODO
+			}
+
+			const_iterator(const iterator &other) {
+				// TODO
+			}
+			// And other methods in iterator, please fill by yourself.
+		};
+	};
+} // namespace sjtu
